@@ -2,7 +2,7 @@ name: Build and publish Docker images
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, develop, prod]
     tags: ['v*']
   workflow_dispatch:
 
@@ -28,15 +28,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare backend image tags
+        id: backend-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.prefix }}-backend
+          flavor: latest=false
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/prod' }}
+
       - name: Build and publish backend image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
+          tags: ${{ steps.backend-meta.outputs.tags }}
+          labels: ${{ steps.backend-meta.outputs.labels }}
+
+      - name: Prepare frontend image tags
+        id: frontend-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.prefix }}-frontend
+          flavor: latest=false
           tags: |
-            ${{ steps.image.outputs.prefix }}-backend:latest
-            ${{ steps.image.outputs.prefix }}-backend:${{ github.sha }}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/prod' }}
 
       - name: Build and publish frontend image
         uses: docker/build-push-action@v6
@@ -44,6 +67,5 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: |
-            ${{ steps.image.outputs.prefix }}-frontend:latest
-            ${{ steps.image.outputs.prefix }}-frontend:${{ github.sha }}
+          tags: ${{ steps.frontend-meta.outputs.tags }}
+          labels: ${{ steps.frontend-meta.outputs.labels }}
