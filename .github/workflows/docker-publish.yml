@@ -2,9 +2,7 @@ name: Build and publish Docker images
 
 on:
   push:
-    branches: [main, master, develop, prod]
-    tags: ['v*']
-  workflow_dispatch:
+    branches: [prod]
 
 permissions:
   contents: read
@@ -36,7 +34,6 @@ jobs:
           flavor: latest=false
           tags: |
             type=ref,event=branch
-            type=ref,event=tag
             type=sha
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/prod' }}
 
@@ -57,7 +54,6 @@ jobs:
           flavor: latest=false
           tags: |
             type=ref,event=branch
-            type=ref,event=tag
             type=sha
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/prod' }}
 
