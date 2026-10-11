@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 
 const TOKEN_KEY = 'peopleos_token'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 const initials = (first = '', last = '') => `${first[0] || ''}${last[0] || ''}`.toUpperCase()
 const palette = ['lavender', 'mint', 'peach', 'blue', 'rose', 'yellow']
 const currency = (value) => value == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
@@ -14,7 +15,7 @@ const localDate = () => { const date = new Date(); return `${date.getFullYear()}
 
 async function api(path, options = {}) {
   const token = localStorage.getItem(TOKEN_KEY)
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(`${API_BASE_URL}/api${path}`, {
     ...options,
     headers: {
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),

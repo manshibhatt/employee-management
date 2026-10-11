@@ -22,7 +22,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${MYSQL_DATABASE:-ems_db}?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_URL: jdbc:mysql://employeedb-employee-management-java.i.aivencloud.com:13929/defaultdb?sslmode=require
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:?Set MYSQL_USER in .env}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
