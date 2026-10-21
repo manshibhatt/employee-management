@@ -45,7 +45,7 @@ public class AttendanceController {
     }
 
     @GetMapping("/date/{date}")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<List<AttendanceDTO>> getAttendanceByDate(
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ResponseEntity.ok(attendanceService.getAttendanceByDate(date));
@@ -63,7 +63,7 @@ public class AttendanceController {
     }
 
     private void requireOwnEmployeeOrApprover(Long employeeId, Authentication authentication) {
-        if (authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_LEAVE_APPROVER"))) return;
+        if (authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_LEAVE_APPROVER") || a.getAuthority().equals("ROLE_ADMIN"))) return;
         User user = userRepository.findWithEmployeeByUsername(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getEmployee() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "Your login is not linked to an employee profile yet.");

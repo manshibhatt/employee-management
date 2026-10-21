@@ -29,7 +29,7 @@ public class EmployeeInfoService {
     @Transactional
     public EmployeeInfoDTO getOrCreate(Long employeeId, Authentication authentication) {
         Employee employee = getEmployee(employeeId);
-        boolean approver = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_LEAVE_APPROVER"));
+        boolean approver = authentication.getAuthorities().stream().anyMatch(a -> (a.getAuthority().equals("ROLE_LEAVE_APPROVER") || a.getAuthority().equals("ROLE_ADMIN")));
         if (!approver) {
             User user = userRepository.findByUsername(authentication.getName()).orElseThrow();
             if (user.getEmployee() == null || !user.getEmployee().getId().equals(employeeId)) {

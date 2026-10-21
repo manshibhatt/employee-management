@@ -6,10 +6,16 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.List;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsername(String username);
+
+    @EntityGraph(attributePaths = "employee")
+    List<User> findAllByOrderByIdDesc();
+
+    long countByRole(String role);
 
     @EntityGraph(attributePaths = "employee")
     Optional<User> findWithEmployeeByUsername(String username);

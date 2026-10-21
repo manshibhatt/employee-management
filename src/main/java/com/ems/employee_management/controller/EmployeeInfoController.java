@@ -23,7 +23,7 @@ public class EmployeeInfoController {
     }
 
     @PutMapping
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<EmployeeInfoDTO> save(@PathVariable Long employeeId, @Valid @RequestBody EmployeeInfoDTO dto) {
         return ResponseEntity.ok(employeeInfoService.save(employeeId, dto));
     }

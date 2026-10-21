@@ -41,7 +41,7 @@ public class LeaveController {
     }
 
     @PatchMapping("/{id}/decision")
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<LeaveRequestDTO> decide(@PathVariable Long id, @Valid @RequestBody LeaveDecisionDTO decision) {
         return ResponseEntity.ok(leaveService.decide(id, decision));
     }

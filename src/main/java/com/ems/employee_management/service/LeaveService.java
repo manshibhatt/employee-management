@@ -117,7 +117,7 @@ public class LeaveService {
     }
 
     private boolean isApprover(Authentication authentication) {
-        return authentication.getAuthorities().stream().anyMatch(authority -> authority.getAuthority().equals("ROLE_LEAVE_APPROVER"));
+        return authentication.getAuthorities().stream().anyMatch(authority -> (authority.getAuthority().equals("ROLE_LEAVE_APPROVER") || authority.getAuthority().equals("ROLE_ADMIN")));
     }
 
     private LeaveRequestDTO toDTO(LeaveRequest request) {

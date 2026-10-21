@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowDown, ArrowUp, ArrowUpDown, BriefcaseBusiness, Building2, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Command, LayoutDashboard,
-  LogOut, Menu, MoreHorizontal, Plus, Search, Settings2, ShieldCheck, Users,
+  LogOut, Menu, MoreHorizontal, Plus, RefreshCw, Search, Settings2, ShieldCheck, Users,
   ArrowLeft, CalendarDays, ClipboardCheck, Clock3, Moon, PencilLine, Sun, UserRound, X,
 } from 'lucide-react'
 
@@ -46,6 +46,8 @@ function App() {
   const [departments, setDepartments] = useState([])
   const [currentUser, setCurrentUser] = useState(null)
   const [employeeUsers, setEmployeeUsers] = useState([])
+  const [employeeLoginUsers, setEmployeeLoginUsers] = useState([])
+  const [accountSavingId, setAccountSavingId] = useState(null)
   const [accountsIssue, setAccountsIssue] = useState('')
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [employeeInfo, setEmployeeInfo] = useState(null)
@@ -76,7 +78,8 @@ function App() {
     try {
       const profile = await api('/auth/me')
       setCurrentUser(profile)
-      const approver = profile.role === 'ROLE_LEAVE_APPROVER'
+      const approver = ['ROLE_LEAVE_APPROVER', 'ROLE_ADMIN'].includes(profile.role)
+      const admin = profile.role === 'ROLE_ADMIN'
       const [people, teams] = approver
         ? await Promise.all([api('/employees'), api('/departments')])
         : [await api('/employees/mine').catch((e) => {
@@ -90,13 +93,20 @@ function App() {
         setActiveView('people')
         setAccountsIssue('')
         try {
-          const accounts = await api('/auth/users')
-          setEmployeeUsers(Array.isArray(accounts) ? accounts : [])
-        } catch (e) {
-          setEmployeeUsers([])
-          setAccountsIssue(`Could not load user accounts: ${e.message}`)
-        }
+          const loginUsers = await api('/auth/employee-logins')
+          setEmployeeLoginUsers(Array.isArray(loginUsers) ? loginUsers : [])
+        } catch (e) { setEmployeeLoginUsers([]) }
+        if (admin) {
+          try {
+            const accounts = await api('/auth/users')
+            setEmployeeUsers(Array.isArray(accounts) ? accounts : [])
+          } catch (e) {
+            setEmployeeUsers([])
+            setAccountsIssue(`Could not load user accounts: ${e.message}`)
+          }
+        } else setEmployeeUsers([])
       } else {
+        setEmployeeLoginUsers([])
         setEmployeeUsers([])
         setAccountsIssue('')
         const ownEmployee = employeeRows.find((person) => person.id === profile.employeeId)
@@ -116,6 +126,32 @@ function App() {
     } finally { setLoading(false) }
   }, [])
 
+  async function refreshAccounts() {
+    try {
+      const accounts = await api('/auth/users')
+      setEmployeeUsers(Array.isArray(accounts) ? accounts : [])
+      setAccountsIssue('')
+    } catch (e) {
+      setAccountsIssue(`Could not load user accounts: ${e.message}`)
+    }
+  }
+
+  async function changeAccountRole(account, role) {
+    setAccountSavingId(account.id)
+    setError('')
+    try {
+      const updated = await api(`/auth/users/${account.id}/role`, {
+        method: 'PATCH', body: JSON.stringify({ role }),
+      })
+      setEmployeeUsers((current) => current.map((item) => item.id === updated.id ? updated : item))
+      notify(`${account.username} is now ${role === 'ROLE_LEAVE_APPROVER' ? 'a leave approver' : 'an employee'}`)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setAccountSavingId(null)
+    }
+  }
+
   useEffect(() => { if (token) loadData() }, [token, loadData])
 
   useEffect(() => {
@@ -127,14 +163,14 @@ function App() {
 
   useEffect(() => {
     if (!token || activeView !== 'leaves') return
-    Promise.all([currentUser?.role === 'ROLE_LEAVE_APPROVER' || currentUser?.employeeId ? api('/leaves') : Promise.resolve([]), api('/leaves/types')])
+    Promise.all([isApprover || currentUser?.employeeId ? api('/leaves') : Promise.resolve([]), api('/leaves/types')])
       .then(([requests, types]) => { setLeaveRequests(requests); setLeaveTypes(types) })
       .catch((e) => setError(e.message))
   }, [token, activeView, currentUser])
 
   useEffect(() => {
     if (!token || activeView !== 'attendance' || !currentUser) return
-    const path = currentUser.role === 'ROLE_LEAVE_APPROVER'
+    const path = isApprover
       ? `/attendance/date/${attendanceDate}`
       : currentUser.employeeId ? `/attendance/employee/${currentUser.employeeId}` : null
     if (!path) { setAttendanceRows([]); return }
@@ -245,6 +281,8 @@ function App() {
 
   if (!token) return <Login theme={theme} setTheme={setTheme} onLogin={(newToken) => { localStorage.setItem(TOKEN_KEY, newToken); setToken(newToken) }} />
 
+  const isApprover = ['ROLE_LEAVE_APPROVER', 'ROLE_ADMIN'].includes(currentUser?.role)
+  const isAdmin = currentUser?.role === 'ROLE_ADMIN'
   const departmentsWithCounts = departments.map((department) => ({ ...department, count: employees.filter((person) => person.departmentId === department.id).length }))
 
   return (
@@ -255,23 +293,24 @@ function App() {
         <button className="workspace-switch"><span className="workspace-avatar">A</span><span className="workspace-copy"><b>Acme Studio</b><small>Free plan</small></span><ChevronDown size={16} className="muted-icon" /></button>
         <div className="nav-section-label">MENU</div>
         <nav className="navigation">
-          {currentUser?.role === 'ROLE_LEAVE_APPROVER' ? <>
+          {isApprover ? <>
             <button className={`nav-item ${activeView === 'people' ? 'active' : ''}`} onClick={() => { setActiveView('people'); setDepartmentFilter('all'); setMobileNav(false) }}><LayoutDashboard size={18} /><span>Overview</span></button>
             <button className={`nav-item ${activeView === 'people' || activeView === 'employee' ? 'active' : ''}`} onClick={() => { setActiveView('people'); setDepartmentFilter('all'); setMobileNav(false) }}><Users size={18} /><span>People</span><span className="nav-count">{employees.length}</span></button>
             <button className={`nav-item ${activeView === 'departments' ? 'active' : ''}`} onClick={() => { setActiveView('departments'); setMobileNav(false) }}><BriefcaseBusiness size={18} /><span>Departments</span><span className="nav-count">{departments.length}</span></button>
+            {isAdmin && <button className={`nav-item ${activeView === 'accounts' ? 'active' : ''}`} onClick={() => { setActiveView('accounts'); setMobileNav(false); refreshAccounts() }}><ShieldCheck size={18} /><span>Accounts</span><span className="nav-count">{employeeUsers.length}</span></button>}
           </> : null}
-          {currentUser?.role !== 'ROLE_LEAVE_APPROVER' && <button className={`nav-item ${activeView === 'my-profile' ? 'active' : ''}`} onClick={openMyProfile}><UserRound size={18} /><span>My profile</span></button>}
-          <button className={`nav-item ${activeView === 'leaves' ? 'active' : ''}`} onClick={() => { setActiveView('leaves'); setMobileNav(false) }}><CalendarDays size={18} /><span>{currentUser?.role === 'ROLE_LEAVE_APPROVER' ? 'Leave approvals' : 'My leave'}</span></button>
-          <button className={`nav-item ${activeView === 'attendance' ? 'active' : ''}`} onClick={() => { setActiveView('attendance'); setMobileNav(false) }}><Clock3 size={18} /><span>{currentUser?.role === 'ROLE_LEAVE_APPROVER' ? 'Attendance' : 'My attendance'}</span></button>
+          {!isApprover && <button className={`nav-item ${activeView === 'my-profile' ? 'active' : ''}`} onClick={openMyProfile}><UserRound size={18} /><span>My profile</span></button>}
+          <button className={`nav-item ${activeView === 'leaves' ? 'active' : ''}`} onClick={() => { setActiveView('leaves'); setMobileNav(false) }}><CalendarDays size={18} /><span>{isApprover ? 'Leave approvals' : 'My leave'}</span></button>
+          <button className={`nav-item ${activeView === 'attendance' ? 'active' : ''}`} onClick={() => { setActiveView('attendance'); setMobileNav(false) }}><Clock3 size={18} /><span>{isApprover ? 'Attendance' : 'My attendance'}</span></button>
         </nav>
-        {currentUser?.role === 'ROLE_LEAVE_APPROVER' && <><div className="sidebar-divider" /><div className="nav-section-label">WORKSPACE</div><nav className="navigation"><button className="nav-item"><Settings2 size={18} /><span>Settings</span></button><button className="nav-item"><CircleHelp size={18} /><span>Help & support</span></button></nav></>}
-        <div className="sidebar-bottom">{currentUser?.role === 'ROLE_LEAVE_APPROVER' && <div className="plan-card"><div className="plan-icon"><ShieldCheck size={16} /></div><div><b>Your workspace</b><p>People are your best asset.<br />Keep your team in sync.</p></div><button aria-label="Close" className="plan-close"><X size={14} /></button><button className="upgrade-link">Explore PeopleOS <span>↗</span></button></div>}<button onClick={signOut} className="profile-row"><div className="profile-avatar">{initials(currentUser?.username?.[0] || 'M', '')}</div><span className="profile-copy"><b>{currentUser?.username || 'My account'}</b><small>{currentUser?.role === 'ROLE_LEAVE_APPROVER' ? 'Leave approver' : 'Employee account'}</small></span><LogOut size={17} className="logout-icon" /></button></div>
+        {isApprover && <><div className="sidebar-divider" /><div className="nav-section-label">WORKSPACE</div><nav className="navigation"><button className="nav-item"><Settings2 size={18} /><span>Settings</span></button><button className="nav-item"><CircleHelp size={18} /><span>Help & support</span></button></nav></>}
+        <div className="sidebar-bottom">{isApprover && <div className="plan-card"><div className="plan-icon"><ShieldCheck size={16} /></div><div><b>Your workspace</b><p>People are your best asset.<br />Keep your team in sync.</p></div><button aria-label="Close" className="plan-close"><X size={14} /></button><button className="upgrade-link">Explore PeopleOS <span>↗</span></button></div>}<button onClick={signOut} className="profile-row"><div className="profile-avatar">{initials(currentUser?.username?.[0] || 'M', '')}</div><span className="profile-copy"><b>{currentUser?.username || 'My account'}</b><small>{isAdmin ? 'Admin' : isApprover ? 'Leave approver' : 'Employee account'}</small></span><LogOut size={17} className="logout-icon" /></button></div>
       </aside>
       {mobileNav && <button aria-label="Close menu" className="scrim" onClick={() => setMobileNav(false)} />}
       <main className="main-area">
-        <header className="topbar"><button onClick={() => setMobileNav(true)} className="mobile-menu icon-button"><Menu size={20} /></button><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><b>{activeView === 'people' ? 'People' : activeView === 'departments' ? 'Departments' : activeView === 'employee' ? selectedEmployee?.firstName : activeView === 'my-profile' ? 'My profile' : activeView === 'attendance' ? 'Attendance' : 'Leave'}</b></div><div className="topbar-right"><span className="topbar-date">{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</span><ThemeToggle theme={theme} setTheme={setTheme} /><div className="topbar-avatar">{initials(currentUser?.username?.[0] || 'M', '')}</div></div></header>
+        <header className="topbar"><button onClick={() => setMobileNav(true)} className="mobile-menu icon-button"><Menu size={20} /></button><div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><b>{activeView === 'people' ? 'People' : activeView === 'departments' ? 'Departments' : activeView === 'accounts' ? 'Accounts' : activeView === 'employee' ? selectedEmployee?.firstName : activeView === 'my-profile' ? 'My profile' : activeView === 'attendance' ? 'Attendance' : 'Leave'}</b></div><div className="topbar-right"><span className="topbar-date">{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</span><ThemeToggle theme={theme} setTheme={setTheme} /><div className="topbar-avatar">{initials(currentUser?.username?.[0] || 'M', '')}</div></div></header>
         <div className="page-content">
-          {activeView !== 'employee' && activeView !== 'my-profile' && activeView !== 'leaves' && activeView !== 'attendance' && <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR TEAM</div><h1>{activeView === 'people' ? 'People' : 'Departments'} <span className="heading-count">{activeView === 'people' ? employees.length : departments.length}</span></h1><p className="page-subtitle">{activeView === 'people' ? (departmentFilter === 'all' ? 'Manage your people, all in one place.' : `Employees in ${departmentName(Number(departmentFilter))}.`) : 'Organize your people into teams.'}</p></div>{currentUser?.role === 'ROLE_LEAVE_APPROVER' && <button className="primary-button" onClick={() => setModal(activeView === 'people' ? { employee: null } : { department: true })}><Plus size={17} strokeWidth={2.5} /> {activeView === 'people' ? 'Add employee' : 'Add department'}</button>}</div>}
+          {activeView !== 'employee' && activeView !== 'my-profile' && activeView !== 'leaves' && activeView !== 'attendance' && <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR TEAM</div><h1>{activeView === 'people' ? 'People' : activeView === 'departments' ? 'Departments' : 'Accounts'} <span className="heading-count">{activeView === 'people' ? employees.length : activeView === 'departments' ? departments.length : employeeUsers.length}</span></h1><p className="page-subtitle">{activeView === 'people' ? (departmentFilter === 'all' ? 'Manage your people, all in one place.' : `Employees in ${departmentName(Number(departmentFilter))}.`) : activeView === 'accounts' ? 'Review new sign-ups and manage account roles.' : 'Organize your people into teams.'}</p></div>{isApprover && activeView !== 'accounts' && <button className="primary-button" onClick={() => setModal(activeView === 'people' ? { employee: null } : { department: true })}><Plus size={17} strokeWidth={2.5} /> {activeView === 'people' ? 'Add employee' : 'Add department'}</button>}</div>}
           {error && <div className="error-banner"><span>{error}</span><button onClick={() => setError('')}><X size={16} /></button></div>}
           {activeView === 'people' ? <>
           <section className="summary-grid">
@@ -280,19 +319,19 @@ function App() {
             <SummaryCard icon={<BriefcaseBusiness size={17} />} label="Avg. salary" value={employees.length ? currency(employees.reduce((n, p) => n + (Number(p.salary) || 0), 0) / employees.length) : '$0'} foot="Across all employees" tone="green" />
           </section>
           <section className="team-section"><div className="section-heading"><div><div className="section-title-row"><h2>Your people</h2><span className="subtle-count">{filtered.length} members</span></div><p>Everyone who makes your team great.</p></div><button className="filter-button"><span className="status-dot" /> All members <ChevronDown size={15} /></button></div>
-            <div className="department-strip"><div className="department-label">TEAMS</div><button onClick={() => { setDepartmentFilter('all'); setPage(1) }} className={`department-chip ${departmentFilter === 'all' ? 'selected' : ''}`}><span className="dept-icon all-icon"><Users size={14} /></span><span>All people</span><span className="chip-count">{employees.length}</span></button>{departmentsWithCounts.map((dept, i) => <button key={dept.id} onClick={() => { setDepartmentFilter(String(dept.id)); setPage(1) }} className={`department-chip ${departmentFilter === String(dept.id) ? 'selected' : ''}`}><span className={`dept-icon dept-${i % 4}`}><Building2 size={14} /></span><span>{dept.name}</span><span className="chip-count">{dept.count}</span></button>)}{currentUser?.role === 'ROLE_LEAVE_APPROVER' && <button className="add-team" onClick={() => setModal({ department: true })}><Plus size={14} /> Add team</button>}</div>
+            <div className="department-strip"><div className="department-label">TEAMS</div><button onClick={() => { setDepartmentFilter('all'); setPage(1) }} className={`department-chip ${departmentFilter === 'all' ? 'selected' : ''}`}><span className="dept-icon all-icon"><Users size={14} /></span><span>All people</span><span className="chip-count">{employees.length}</span></button>{departmentsWithCounts.map((dept, i) => <button key={dept.id} onClick={() => { setDepartmentFilter(String(dept.id)); setPage(1) }} className={`department-chip ${departmentFilter === String(dept.id) ? 'selected' : ''}`}><span className={`dept-icon dept-${i % 4}`}><Building2 size={14} /></span><span>{dept.name}</span><span className="chip-count">{dept.count}</span></button>)}{isApprover && <button className="add-team" onClick={() => setModal({ department: true })}><Plus size={14} /> Add team</button>}</div>
             <div className="table-toolbar"><div className="search-field"><Search size={16} /><input value={query} placeholder="Search people..." onChange={(e) => { setQuery(e.target.value); setPage(1) }} /><kbd>⌘ K</kbd></div><button className="toolbar-filter" onClick={() => { setDepartmentFilter('all'); setQuery('') }}><Settings2 size={15} /> Filters{(query || departmentFilter !== 'all') && <span className="filter-active" />}</button><button className="toolbar-more" aria-label="More options"><MoreHorizontal size={18} /></button></div>
             <div className="table-wrap"><table><thead><tr><th><input type="checkbox" aria-label="Select all people" /></th><SortHead label="NAME" sortKey="firstName" sort={sort} setSort={setSort} /><SortHead label="DEPARTMENT" sortKey="department" sort={sort} setSort={setSort} /><SortHead label="EMAIL ADDRESS" sortKey="email" sort={sort} setSort={setSort} /><SortHead label="SALARY" sortKey="salary" sort={sort} setSort={setSort} /><th className="actions-head" /></tr></thead><tbody>
-              {loading ? <tr><td colSpan="6" className="empty-state"><span className="spinner" /> Loading your people...</td></tr> : visible.map((person, index) => <tr key={person.id}><td><input type="checkbox" aria-label={`Select ${person.firstName}`} /></td><td><div className="person-cell"><div className={`person-avatar ${palette[(index + (page - 1) * pageSize) % palette.length]}`}>{initials(person.firstName, person.lastName)}</div><div className="person-info"><button className="person-name-link" onClick={() => openEmployee(person)}><b>{person.firstName} {person.lastName}</b></button><small>Employee · #{String(person.id).padStart(4, '0')}</small></div></div></td><td><span className="department-pill"><span className="small-dept-dot" />{departmentName(person.departmentId)}</span></td><td className="email-cell">{person.email}</td><td className="salary-cell">{currency(person.salary)}</td><td className="row-actions">{currentUser?.role === 'ROLE_LEAVE_APPROVER' && <><button className="row-more" aria-label="Employee options" onClick={() => setMenuId(menuId === person.id ? null : person.id)}><MoreHorizontal size={19} /></button>{menuId === person.id && <div className="row-menu"><button onClick={() => { setModal({ employee: person }); setMenuId(null) }}>Edit details</button><button className="danger-action" onClick={() => deleteEmployee(person)}>Remove employee</button></div>}</>}</td></tr>)}
+              {loading ? <tr><td colSpan="6" className="empty-state"><span className="spinner" /> Loading your people...</td></tr> : visible.map((person, index) => <tr key={person.id}><td><input type="checkbox" aria-label={`Select ${person.firstName}`} /></td><td><div className="person-cell"><div className={`person-avatar ${palette[(index + (page - 1) * pageSize) % palette.length]}`}>{initials(person.firstName, person.lastName)}</div><div className="person-info"><button className="person-name-link" onClick={() => openEmployee(person)}><b>{person.firstName} {person.lastName}</b></button><small>Employee · #{String(person.id).padStart(4, '0')}</small></div></div></td><td><span className="department-pill"><span className="small-dept-dot" />{departmentName(person.departmentId)}</span></td><td className="email-cell">{person.email}</td><td className="salary-cell">{currency(person.salary)}</td><td className="row-actions">{isApprover && <><button className="row-more" aria-label="Employee options" onClick={() => setMenuId(menuId === person.id ? null : person.id)}><MoreHorizontal size={19} /></button>{menuId === person.id && <div className="row-menu"><button onClick={() => { setModal({ employee: person }); setMenuId(null) }}>Edit details</button><button className="danger-action" onClick={() => deleteEmployee(person)}>Remove employee</button></div>}</>}</td></tr>)}
               {!loading && visible.length === 0 && <tr><td colSpan="6" className="empty-state"><div className="empty-icon"><Users size={20} /></div><b>{employees.length ? 'No people found' : 'Your team starts here'}</b><span>{employees.length ? 'Try a different name or team.' : 'Add your first employee to get started.'}</span>{!employees.length && <button className="primary-button compact-button" onClick={() => setModal({ employee: null })}><Plus size={15} /> Add employee</button>}</td></tr>}
             </tbody></table></div>
             <div className="table-footer"><span>Showing <b>{filtered.length ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, filtered.length)}</b> of <b>{filtered.length}</b> people</span><div className="pagination"><button disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Previous page"><ChevronLeft size={16} /></button><span>Page <b>{page}</b> of <b>{pageCount}</b></span><button disabled={page >= pageCount} onClick={() => setPage(page + 1)} aria-label="Next page"><ChevronRight size={16} /></button></div></div>
           </section>
-          </> : activeView === 'departments' ? <section className="department-view"><div className="section-heading"><div><div className="section-title-row"><h2>All departments</h2><span className="subtle-count">{departments.length} teams</span></div><p>Teams and the people in each one.</p></div></div>{loading ? <div className="department-loading"><span className="spinner" /> Loading departments…</div> : departments.length ? <div className="department-cards">{departmentsWithCounts.map((dept, i) => { const members = employees.filter((person) => person.departmentId === dept.id); return <article className="department-card" key={dept.id}><div className="department-card-top"><span className={`dept-icon dept-${i % 4}`}><Building2 size={17} /></span><span className="dept-id">DEPARTMENT {String(dept.id).padStart(2, '0')}</span></div><h3>{dept.name}</h3><p>{dept.count} {dept.count === 1 ? 'team member' : 'team members'}</p><div className="department-members">{members.length ? members.slice(0, 5).map((person, j) => <span title={`${person.firstName} ${person.lastName}`} className={`person-avatar ${palette[j % palette.length]}`} key={person.id}>{initials(person.firstName, person.lastName)}</span>) : <span className="no-members">No members assigned yet</span>}{members.length > 5 && <span className="more-members">+{members.length - 5}</span>}</div><button className="department-people-link" onClick={() => viewDepartmentPeople(dept.id)}>{members.length ? 'View employees' : 'View department'} <ChevronRight size={14} /></button></article> })}</div> : <div className="department-empty"><div className="empty-icon"><Building2 size={20} /></div><b>No departments yet</b><span>Create a department to organize your employees into teams.</span>{currentUser?.role === 'ROLE_LEAVE_APPROVER' && <button className="primary-button compact-button" onClick={() => setModal({ department: true })}><Plus size={15} /> Add department</button>}</div>}</section> : activeView === 'my-profile' ? selectedEmployee ? <EmployeeDetail employee={selectedEmployee} info={employeeInfo} leaves={leaveRequests} approver={currentUser?.role === 'ROLE_LEAVE_APPROVER'} myProfile onBack={() => setActiveView(currentUser?.role === 'ROLE_LEAVE_APPROVER' ? 'people' : 'leaves')} onSave={saveEmployeeInfo} onApprove={decideLeave} /> : <UnlinkedProfile username={currentUser?.username} role={currentUser?.role} /> : activeView === 'employee' ? <EmployeeDetail employee={selectedEmployee} info={employeeInfo} leaves={leaveRequests} approver={currentUser?.role === 'ROLE_LEAVE_APPROVER'} onBack={() => setActiveView('people')} onSave={saveEmployeeInfo} onApprove={decideLeave} /> : activeView === 'attendance' ? <AttendanceView rows={attendanceRows} setRows={setAttendanceRows} employees={employees} date={attendanceDate} setDate={setAttendanceDate} user={currentUser} notify={notify} /> : <LeavesView requests={leaveRequests} types={leaveTypes} approver={currentUser?.role === 'ROLE_LEAVE_APPROVER'} employeeLinked={Boolean(currentUser?.employeeId)} onSubmit={submitLeave} onDecide={decideLeave} />}
+          </> : activeView === 'accounts' ? <AccountsView accounts={employeeUsers} accountsIssue={accountsIssue} currentUser={currentUser} savingId={accountSavingId} onRefresh={refreshAccounts} onChangeRole={changeAccountRole} /> : activeView === 'departments' ? <section className="department-view"><div className="section-heading"><div><div className="section-title-row"><h2>All departments</h2><span className="subtle-count">{departments.length} teams</span></div><p>Teams and the people in each one.</p></div></div>{loading ? <div className="department-loading"><span className="spinner" /> Loading departments…</div> : departments.length ? <div className="department-cards">{departmentsWithCounts.map((dept, i) => { const members = employees.filter((person) => person.departmentId === dept.id); return <article className="department-card" key={dept.id}><div className={`department-card-top`}><span className={`dept-icon dept-${i % 4}`}><Building2 size={17} /></span><span className="dept-id">DEPARTMENT {String(dept.id).padStart(2, '0')}</span></div><h3>{dept.name}</h3><p>{dept.count} {dept.count === 1 ? 'team member' : 'team members'}</p><div className="department-members">{members.length ? members.slice(0, 5).map((person, j) => <span title={`${person.firstName} ${person.lastName}`} className={`person-avatar ${palette[j % palette.length]}`} key={person.id}>{initials(person.firstName, person.lastName)}</span>) : <span className="no-members">No members assigned yet</span>}{members.length > 5 && <span className="more-members">+{members.length - 5}</span>}</div><button className="department-people-link" onClick={() => viewDepartmentPeople(dept.id)}>{members.length ? 'View employees' : 'View department'} <ChevronRight size={14} /></button></article> })}</div> : <div className="department-empty"><div className="empty-icon"><Building2 size={20} /></div><b>No departments yet</b><span>Create a department to organize your employees into teams.</span>{isApprover && <button className="primary-button compact-button" onClick={() => setModal({ department: true })}><Plus size={15} /> Add department</button>}</div>}</section> : activeView === 'my-profile' ? selectedEmployee ? <EmployeeDetail employee={selectedEmployee} info={employeeInfo} leaves={leaveRequests} approver={isApprover} myProfile onBack={() => setActiveView(isApprover ? 'people' : 'leaves')} onSave={saveEmployeeInfo} onApprove={decideLeave} /> : <UnlinkedProfile username={currentUser?.username} role={currentUser?.role} /> : activeView === 'employee' ? <EmployeeDetail employee={selectedEmployee} info={employeeInfo} leaves={leaveRequests} approver={isApprover} onBack={() => setActiveView('people')} onSave={saveEmployeeInfo} onApprove={decideLeave} /> : activeView === 'attendance' ? <AttendanceView rows={attendanceRows} setRows={setAttendanceRows} employees={employees} date={attendanceDate} setDate={setAttendanceDate} user={currentUser} notify={notify} /> : <LeavesView requests={leaveRequests} types={leaveTypes} approver={isApprover} employeeLinked={Boolean(currentUser?.employeeId)} onSubmit={submitLeave} onDecide={decideLeave} />}
           <footer className="page-footer"><span>Made for people who make it happen <span className="footer-heart">♥</span></span><span>© 2024 PeopleOS <span className="footer-sep">·</span> Privacy <span className="footer-sep">·</span> Terms</span></footer>
         </div>
       </main>
-      {modal?.department ? <DepartmentModal onClose={() => setModal(null)} onSave={saveDepartment} /> : modal && <EmployeeModal employee={modal.employee} departments={departments} users={employeeUsers} accountsIssue={accountsIssue} onClose={() => setModal(null)} onSave={saveEmployee} />}
+      {modal?.department ? <DepartmentModal onClose={() => setModal(null)} onSave={saveDepartment} /> : modal && <EmployeeModal employee={modal.employee} departments={departments} users={employeeLoginUsers} accountsIssue={accountsIssue} onClose={() => setModal(null)} onSave={saveEmployee} />}
       {notice && <div className="toast"><span><Check size={15} /></span>{notice}</div>}
     </div>
   )
@@ -302,6 +341,28 @@ function SummaryCard({ icon, label, value, foot, tone }) {
   return <div className="summary-card"><div className="summary-top"><span className={`summary-icon ${tone}`}>{icon}</span><span className="summary-trend"><ArrowUp size={13} /> 12%</span></div><div className="summary-value">{value}</div><div className="summary-label">{label}</div><div className="summary-foot"><span className="foot-dot" />{foot}</div></div>
 }
 
+function AccountsView({ accounts, accountsIssue, currentUser, savingId, onRefresh, onChangeRole }) {
+  return <section className="department-view account-management">
+    <div className="section-heading">
+      <div><div className="section-title-row"><h2>Login accounts</h2><span className="subtle-count">{accounts.length} accounts</span></div><p>New registrations appear first. New registrations start as Employee accounts. Only an Admin can assign Leave Approver.</p></div>
+      <button className="secondary-button" onClick={onRefresh}><RefreshCw size={15} /> Refresh accounts</button>
+    </div>
+    {accountsIssue && <div className="account-load-error">{accountsIssue}</div>}
+    <div className="account-tip"><ShieldCheck size={16} /><span>Confirm the username with the person before assigning Leave Approver. They should sign out and back in after a role change.</span></div>
+    {accounts.length ? <div className="table-wrap"><table className="account-table"><thead><tr><th>USERNAME</th><th>ACCOUNT ROLE</th><th>EMPLOYEE PROFILE</th><th>SET ROLE</th></tr></thead><tbody>
+      {accounts.map((account) => <tr key={account.id}>
+        <td><div className="account-username"><b>{account.username}</b><small>Account #{account.id}</small></div></td>
+        <td><span className={`account-role-badge ${account.role === 'ROLE_ADMIN' ? 'admin' : account.role === 'ROLE_LEAVE_APPROVER' ? 'approver' : ''}`}>{account.role === 'ROLE_ADMIN' ? 'Admin' : account.role === 'ROLE_LEAVE_APPROVER' ? 'Leave Approver' : 'Employee'}</span></td>
+        <td><span className="account-link-status">{account.employeeId ? `Linked · employee #${account.employeeId}` : 'Not linked'}</span></td>
+        <td><select aria-label={`Role for ${account.username}`} className="account-role-select" value={account.role} disabled={account.role === 'ROLE_ADMIN' || account.id === currentUser?.id || savingId === account.id} onChange={(event) => onChangeRole(account, event.target.value)}>
+          {account.role === 'ROLE_ADMIN' && <option value="ROLE_ADMIN">Admin</option>}<option value="ROLE_USER">Employee</option><option value="ROLE_LEAVE_APPROVER">Leave Approver</option>
+        </select>{account.id === currentUser?.id && <small className="account-self-note">Your own role is locked</small>}</td>
+      </tr>)}
+    </tbody></table></div> : <div className="empty-state account-empty"><div className="empty-icon"><Users size={20} /></div><b>No login accounts found</b><span>New registrations will appear here. Refresh after someone signs up.</span></div>}
+    <p className="account-link-note">To connect an account to an employee record, go to <b>People → Add employee</b> and choose its username under Employee login.</p>
+  </section>
+}
+
 function SortHead({ label, sortKey, sort, setSort }) {
   const selected = sort.key === sortKey
   return <th><button className={`sort-button ${selected ? 'sorted' : ''}`} onClick={() => setSort({ key: sortKey, direction: selected && sort.direction === 'asc' ? 'desc' : 'asc' })}>{label}{selected ? sort.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} /> : <ArrowUpDown size={12} />}</button></th>
@@ -309,13 +370,13 @@ function SortHead({ label, sortKey, sort, setSort }) {
 
 function UnlinkedProfile({ username, role }) {
   return <div className="employee-detail-page">
-    <section className="employee-hero"><div className="person-avatar lavender employee-hero-avatar"><UserRound size={23} /></div><div className="employee-hero-info"><div className="eyebrow"><span className="eyebrow-dot" /> MY PROFILE</div><h1>{username || 'My account'}</h1><p>{role === 'ROLE_LEAVE_APPROVER' ? 'Leave approver account' : 'Employee account'}</p></div><span className="department-pill">Not linked</span></section>
+    <section className="employee-hero"><div className="person-avatar lavender employee-hero-avatar"><UserRound size={23} /></div><div className="employee-hero-info"><div className="eyebrow"><span className="eyebrow-dot" /> MY PROFILE</div><h1>{username || 'My account'}</h1><p>{role === 'ROLE_ADMIN' ? 'Admin account' : role === 'ROLE_LEAVE_APPROVER' ? 'Leave approver account' : 'Employee account'}</p></div><span className="department-pill">Not linked</span></section>
     <section className="detail-panel unlinked-profile-panel"><div className="detail-panel-heading"><div><h2>No employee profile linked</h2><p>Your login details are available, but there is no employee record connected to this account yet.</p></div></div><div className="unlinked-notice">Ask a leave approver to link this login to an employee from the People page. Once linked, your employee details will appear here.</div></section>
   </div>
 }
 
 function AttendanceView({ rows, setRows, employees, date, setDate, user, notify }) {
-  const approver = user?.role === 'ROLE_LEAVE_APPROVER'
+  const approver = ['ROLE_LEAVE_APPROVER', 'ROLE_ADMIN'].includes(user?.role)
   const [employeeId, setEmployeeId] = useState('')
   const [busy, setBusy] = useState(false)
   const ownId = user?.employeeId
@@ -407,7 +468,7 @@ function Login({ onLogin, theme, setTheme }) {
       onLogin(result.token)
     } catch (err) { setError(err.message) } finally { setBusy(false) }
   }
-  return <div className="login-screen"><div className="login-decoration decoration-one" /><div className="login-decoration decoration-two" /><div className="login-panel"><div className="login-brand"><div className="brand-mark"><Command size={19} strokeWidth={2.6} /></div><span>people<span className="brand-light">OS</span></span></div><div className="login-art"><div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" /><div className="art-card art-card-a"><span className="art-avatar art-lavender">AM</span><span><b>Alex Morgan</b><small>Product design</small></span><span className="art-pill" /></div><div className="art-card art-card-b"><span className="art-avatar art-mint">JL</span><span><b>Jamie Lee</b><small>Engineering</small></span><span className="art-pill" /></div><div className="art-center"><Users size={29} /></div><div className="art-spark spark-a">✳</div><div className="art-spark spark-b">✦</div></div><div className="login-copy"><div className="eyebrow"><span className="eyebrow-dot" /> A BETTER WAY TO WORK</div><h1>Good work<br />starts with <span>good people.</span></h1><p>Your team, thoughtfully organized.<br />Everything you need to help people thrive.</p><div className="login-features"><span><Check size={14} /> One clear view of your team</span><span><Check size={14} /> A little less busywork</span></div></div><div className="login-legal">© 2024 PeopleOS <span>·</span> Built for better work</div></div><div className="login-form-side"><ThemeToggle theme={theme} setTheme={setTheme} className="login-theme-toggle" /><form className="login-form" onSubmit={submit}><div className="form-overline">WELCOME TO PEOPLEOS</div><h2>{register ? 'Create your account' : 'Welcome back'}</h2><p className="login-subtitle">{register ? 'Get started with your team workspace.' : 'Sign in to pick up where you left off.'}</p>{error && <div className="form-error">{error}</div>}<label className="field-label">Username<input required autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Enter your username" /></label><label className="field-label">Password<input required type="password" autoComplete={register ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" /></label>{!register && <div className="forgot-link">Protected with secure sign-in <ShieldCheck size={14} /></div>}<button disabled={busy} className="primary-button login-submit">{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}<ChevronRight size={17} /></button><div className="register-prompt">{register ? 'Already have an account?' : 'New to PeopleOS?'} <button type="button" onClick={() => { setRegister(!register); setError('') }}>{register ? 'Sign in' : 'Create an account'}</button></div><div className="login-security"><span><ShieldCheck size={15} /></span> Your information is protected and secure</div></form><div className="form-corner">PEOPLE FIRST, ALWAYS <span>✳</span></div></div></div>
+  return <div className="login-screen"><div className="login-decoration decoration-one" /><div className="login-decoration decoration-two" /><div className="login-panel"><div className="login-brand"><div className="brand-mark"><Command size={19} strokeWidth={2.6} /></div><span>people<span className="brand-light">OS</span></span></div><div className="login-art"><div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" /><div className="art-card art-card-a"><span className="art-avatar art-lavender">AM</span><span><b>Alex Morgan</b><small>Product design</small></span><span className="art-pill" /></div><div className="art-card art-card-b"><span className="art-avatar art-mint">JL</span><span><b>Jamie Lee</b><small>Engineering</small></span><span className="art-pill" /></div><div className="art-center"><Users size={29} /></div><div className="art-spark spark-a">✳</div><div className="art-spark spark-b">✦</div></div><div className="login-copy"><div className="eyebrow"><span className="eyebrow-dot" /> A BETTER WAY TO WORK</div><h1>Good work<br />starts with <span>good people.</span></h1><p>Your team, thoughtfully organized.<br />Everything you need to help people thrive.</p><div className="login-features"><span><Check size={14} /> One clear view of your team</span><span><Check size={14} /> A little less busywork</span></div></div><div className="login-legal">© 2024 PeopleOS <span>·</span> Built for better work</div></div><div className="login-form-side"><ThemeToggle theme={theme} setTheme={setTheme} className="login-theme-toggle" /><form className="login-form" onSubmit={submit}><div className="form-overline">WELCOME TO PEOPLEOS</div><h2>{register ? 'Create your account' : 'Welcome back'}</h2><p className="login-subtitle">{register ? 'New accounts start as Employee. Share your username with your leave approver if you need that role.' : 'Sign in to pick up where you left off.'}</p>{error && <div className="form-error">{error}</div>}<label className="field-label">Username<input required autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Enter your username" /></label><label className="field-label">Password<input required type="password" autoComplete={register ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" /></label>{!register && <div className="forgot-link">Protected with secure sign-in <ShieldCheck size={14} /></div>}<button disabled={busy} className="primary-button login-submit">{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}<ChevronRight size={17} /></button><div className="register-prompt">{register ? 'Already have an account?' : 'New to PeopleOS?'} <button type="button" onClick={() => { setRegister(!register); setError('') }}>{register ? 'Sign in' : 'Create an account'}</button></div><div className="login-security"><span><ShieldCheck size={15} /></span> Your information is protected and secure</div></form><div className="form-corner">PEOPLE FIRST, ALWAYS <span>✳</span></div></div></div>
 }
 
 function ThemeToggle({ theme, setTheme, className = '' }) {
