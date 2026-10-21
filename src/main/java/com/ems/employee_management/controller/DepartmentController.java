@@ -16,13 +16,13 @@ public class DepartmentController {
     private DepartmentRepository departmentRepository;
 
     @PostMapping
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public Department createDepartment(@RequestBody Department department) {
         return departmentRepository.save(department);
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public List<Department> getAllDepartments() {
         return departmentRepository.findAll();
     }

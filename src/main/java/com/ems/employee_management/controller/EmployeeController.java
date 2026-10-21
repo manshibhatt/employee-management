@@ -79,14 +79,14 @@ public class EmployeeController {
     private EmployeeService employeeService;
 
     @PostMapping
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<EmployeeDTO> createEmployee(@Valid @RequestBody EmployeeDTO employeeDTO) {
         EmployeeDTO saved = employeeService.createEmployee(employeeDTO);
         return new ResponseEntity<>(saved, HttpStatus.CREATED);
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<List<EmployeeDTO>> getAllEmployees() {
         return new ResponseEntity<>(employeeService.getAllEmployees(), HttpStatus.OK);
     }
@@ -98,26 +98,26 @@ public class EmployeeController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<EmployeeDTO> getEmployeeById(@PathVariable Long id) {
         return new ResponseEntity<>(employeeService.getEmployeeById(id), HttpStatus.OK);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<EmployeeDTO> updateEmployee(@PathVariable Long id, @Valid @RequestBody EmployeeDTO employeeDTO) {
         return new ResponseEntity<>(employeeService.updateEmployee(id, employeeDTO), HttpStatus.OK);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<String> deleteEmployee(@PathVariable Long id) {
         employeeService.deleteEmployee(id);
         return new ResponseEntity<>("Employee deleted successfully", HttpStatus.OK);
     }
 
     @GetMapping("/page")
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<Page<EmployeeDTO>> getEmployeesPaginated(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -127,7 +127,7 @@ public class EmployeeController {
     }
 
     @GetMapping("/search")
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<Page<EmployeeDTO>> searchEmployees(
             @RequestParam String firstName,
             @RequestParam(defaultValue = "0") int page,
@@ -137,7 +137,7 @@ public class EmployeeController {
     }
 
     @GetMapping("/department/{departmentId}")
-    @PreAuthorize("hasRole('LEAVE_APPROVER')")
+    @PreAuthorize("hasAnyRole('LEAVE_APPROVER', 'ADMIN')")
     public ResponseEntity<Page<EmployeeDTO>> getByDepartment(
             @PathVariable Long departmentId,
             @RequestParam(defaultValue = "0") int page,

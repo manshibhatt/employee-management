@@ -71,9 +71,9 @@ public class SecurityConfig {
                         .requestMatchers("/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/leaves/types").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/leaves").hasRole("USER")
-                        .requestMatchers(HttpMethod.GET, "/api/leaves", "/api/leaves/**").hasAnyRole("USER", "LEAVE_APPROVER")
-                        .requestMatchers(HttpMethod.PATCH, "/api/leaves/*/decision").hasRole("LEAVE_APPROVER")
-                        .requestMatchers(HttpMethod.PUT, "/api/employees/*/info").hasRole("LEAVE_APPROVER")
+                        .requestMatchers(HttpMethod.GET, "/api/leaves", "/api/leaves/**").hasAnyRole("USER", "LEAVE_APPROVER", "ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/leaves/*/decision").hasAnyRole("LEAVE_APPROVER", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/employees/*/info").hasAnyRole("LEAVE_APPROVER", "ADMIN")
                         .dispatcherTypeMatchers(
                                 jakarta.servlet.DispatcherType.FORWARD,
                                 jakarta.servlet.DispatcherType.ERROR
